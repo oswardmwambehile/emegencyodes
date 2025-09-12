@@ -69,6 +69,27 @@ def customer_list(request):
     }
     return render(request, "users/customer_list.html", context)
 
+
+
+def admincustomer_list(request):
+    query = request.GET.get("q", "")
+    customers = Customer.objects.prefetch_related("contacts").all()
+
+    if query:
+        customers = customers.filter(
+            Q(company_name__icontains=query) |
+            Q(designation__icontains=query)
+        )
+
+    customers = customers.order_by('-created_at')  # 👈 order by latest created
+
+    context = {
+        "customers": customers,
+        "query": query,
+    }
+    return render(request, "company/customer_list.html", context)
+
+
 from django.shortcuts import render, get_object_or_404, redirect
 from django.forms import inlineformset_factory
 from django.contrib import messages
@@ -109,6 +130,39 @@ def update_customer(request, pk):
         "customer": customer,
     })
 
+def adminupdate_customer(request, pk):
+    customer = get_object_or_404(Customer, pk=pk)
+
+    # Inline formset for contacts tied to customer
+    ContactFormSet = inlineformset_factory(
+        Customer,
+        CustomerContact,
+        form=CustomerContactForm,
+        extra=0,          # no blank rows by default
+        can_delete=True   # allow delete
+    )
+
+    if request.method == "POST":
+        customer_form = CustomerForm(request.POST, instance=customer)
+        formset = ContactFormSet(request.POST, instance=customer)
+
+        if customer_form.is_valid() and formset.is_valid():
+            customer_form.save()
+            formset.save()  # updates, deletes, and adds new
+            messages.success(request, "✅ Customer updated successfully!")
+            return redirect("customers_list")
+        else:
+            print("❌ FORM ERRORS:", customer_form.errors, formset.errors)
+    else:
+        customer_form = CustomerForm(instance=customer)
+        formset = ContactFormSet(instance=customer)
+
+    return render(request, "company/update_customer.html", {
+        "customer_form": customer_form,
+        "formset": formset,
+        "customer": customer,
+    })
+
 # ✅ DELETE CUSTOMER
 def delete_customer(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
@@ -120,6 +174,18 @@ def delete_customer(request, pk):
 
     return render(request, "users/customer_confirm_delete.html", {"customer": customer})
 
+
+
+# ✅ DELETE CUSTOMER
+def admindelete_customer(request, pk):
+    customer = get_object_or_404(Customer, pk=pk)
+
+    if request.method == "POST":
+        customer.delete()
+        messages.success(request, "🗑️ Customer deleted successfully!")
+        return redirect("customers_list")
+
+    return render(request, "company/customer_confirm_delete.html", {"customer": customer})
 
 from django.shortcuts import render, get_object_or_404
 from visits.models import CustomUser

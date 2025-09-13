@@ -1,0 +1,171 @@
+{% extends "users/base.html" %}
+{% load static %}
+{% load humanize %}
+
+{% block content %}
+{% include "users/sidebar.html" %}
+
+<div class="main-panel">
+  <div class="main-header">
+    {% include "users/nav.html" %}
+  </div>
+
+  <div class="container">
+    <div class="page-inner">
+      <h3 class="mb-4"><i class="fas fa-edit text-primary me-2"></i> Update Visit</h3>
+
+      <form method="post" id="updateVisitForm">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+
+        <!-- Client Info & Location -->
+        <div class="mb-4">
+          <h5><i class="fas fa-user-tie me-1 text-secondary"></i> Client Information</h5>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label>{{ form.company_name.label_tag }}</label>
+              {{ form.company_name }}
+            </div>
+            <div class="col-md-6 mb-3">
+              <label>{{ form.contact_person.label_tag }}</label>
+              {{ form.contact_person }}
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label>{{ form.contact_number.label_tag }}</label>
+              {{ form.contact_number }}
+            </div>
+            <div class="col-md-6 mb-3">
+              <label>{{ form.designation.label_tag }}</label>
+              {{ form.designation }}
+            </div>
+          </div>
+
+          <label class="form-label"><i class="fas fa-map-marker-alt me-1 text-danger"></i> Pin Location</label>
+          <div id="map" class="mb-2 border rounded" style="height: 300px;"></div>
+          {{ form.latitude }} {{ form.longitude }}
+        </div>
+
+        <!-- Meeting Stage -->
+        <div class="mb-4">
+          <h5><i class="fas fa-tasks me-1 text-info"></i> Meeting Stage</h5>
+          {{ form.meeting_stage }}
+        </div>
+
+        <!-- Stage-dependent fields -->
+        <div class="mb-4" id="stage-fields">
+
+          <!-- Qualifying Stage -->
+          <div id="qualifying-fields" style="display:none;">
+            <div class="mb-3">
+              <label>{{ form.client_budget.label_tag }}</label>
+              {{ form.client_budget }}
+            </div>
+          </div>
+
+          <!-- Proposal / Negotiation Stage -->
+          <div id="proposal-fields" style="display:none;">
+            <div class="row mb-3">
+              <div class="col-md-4">
+                <label>{{ form.contract_outcome.label_tag }}</label>
+                {{ form.contract_outcome }}
+              </div>
+              <div class="col-md-4">
+                <label>{{ form.contract_amount.label_tag }}</label>
+                {{ form.contract_amount }}
+              </div>
+              <div class="col-md-4 mt-4 pt-2">
+                <div class="form-check">
+                  {{ form.is_order_final }}
+                  <label class="form-check-label">{{ form.is_order_final.label }}</label>
+                </div>
+              </div>
+            </div>
+
+            <h6>Products Interested</h6>
+            <table class="table table-bordered align-middle">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Order Estimate</th>
+                  <th>Final Order Amount</th>
+                  <th>Payment Collected</th>
+                  <th>Delete</th>
+                </tr>
+              </thead>
+              <tbody id="product-formset">
+                {% for product in formset %}
+                <tr class="product-item">
+                  <td>{{ product.product_interested }}</td>
+                  <td>{{ product.order_estimate }}</td>
+                  <td>{{ product.final_order_amount }}</td>
+                  <td>{{ product.payment_collected }}</td>
+                  <td>{{ product.DELETE }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Closing Stage -->
+          <div id="closing-fields" style="display:none;">
+            <div class="form-check mb-3">
+              {{ form.payment_collected }}
+              <label class="form-check-label">{{ form.payment_collected.label }}</label>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Discussion -->
+        <div class="mb-4">
+          <label>{{ form.item_discussed.label_tag }}</label>
+          {{ form.item_discussed }}
+        </div>
+
+        <button type="submit" class="btn btn-success"><i class="fas fa-check me-1"></i> Update Visit</button>
+        <a href="{% url 'visit_detail' form.instance.id %}" class="btn btn-secondary"><i class="fas fa-arrow-left me-1"></i> Back</a>
+      </form>
+    </div>
+  </div>
+</div>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // Initialize map
+    const latInput = document.getElementById("id_latitude");
+    const lonInput = document.getElementById("id_longitude");
+    const map = L.map('map').setView([latInput.value || 0, lonInput.value || 0], 15);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    if(latInput.value && lonInput.value) L.marker([latInput.value, lonInput.value]).addTo(map);
+
+    // Stage-dependent field toggling
+    const stageSelect = document.getElementById("id_meeting_stage");
+    const qualifyingFields = document.getElementById("qualifying-fields");
+    const proposalFields = document.getElementById("proposal-fields");
+    const closingFields = document.getElementById("closing-fields");
+
+    function updateStageFields() {
+        const stage = stageSelect.value;
+        qualifyingFields.style.display = (stage === "Qualifying") ? "block" : "none";
+        proposalFields.style.display = (stage === "Proposal or Negotiation") ? "block" : "none";
+        closingFields.style.display = (stage === "Closing") ? "block" : "none";
+    }
+
+    stageSelect.addEventListener("change", updateStageFields);
+    updateStageFields(); // initial run on page load
+});
+</script>
+
+<style>
+table th, table td { vertical-align: middle !important; }
+.form-check-label { margin-left: 0.3em; }
+</style>
+
+{% endblock %}

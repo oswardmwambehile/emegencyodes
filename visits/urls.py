@@ -11,6 +11,8 @@ urlpatterns = [
      path('profile/', views.profile_view, name='profile'),
      path('add_user/', views.register, name='register'),
      path('change-password/', views.change_password, name='change_password'),
+     
+    path('visit/<int:visit_id>/update/', views.update_visit, name='update_visit'),
     path('all_visits/', views.all_visit_list, name='all_visit_list'),# You can replace 'index' with a home view too
     path("get-contacts/<int:company_id>/", views.get_contacts, name="get_contacts"),
     path("get-contact-details/<int:contact_id>/", views.get_contact_details, name="get_contact_details"),

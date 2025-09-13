@@ -32,8 +32,8 @@
             <strong>Status:</strong> 
             <span class="badge 
               {% if visit.status == 'Open' %}bg-primary
-              {% elif visit.status == 'Won' %}bg-success
-              {% elif visit.status == 'Closed' %}bg-secondary
+              {% elif visit.status == 'Won Paid' %}bg-success
+              {% elif visit.status == 'Won Pending Payment' %}bg-warning text-dark
               {% elif visit.status == 'Lost' %}bg-danger
               {% else %}bg-light text-dark{% endif %}">
               <i class="fas fa-circle me-1"></i> {{ visit.status }}
@@ -42,7 +42,7 @@
           <p>
             <strong>Tag:</strong>
             <span class="badge 
-              {% if visit.tag == 'Prospector' %}bg-warning text-dark
+              {% if visit.tag == 'Prospect' %}bg-warning text-dark
               {% elif visit.tag == 'Lead' %}bg-primary
               {% elif visit.tag == 'Customer' %}bg-success
               {% else %}bg-light text-dark{% endif %}">
@@ -68,30 +68,42 @@
         {% endif %}
       </div>
 
-      <!-- Production Lines Table -->
+      <!-- Products Interested Table -->
       <div class="mb-4">
-        <h5><i class="fas fa-industry me-1 text-info"></i> Production Lines</h5>
-        {% if production_lines %}
+        <h5><i class="fas fa-industry me-1 text-info"></i> Products Interested</h5>
+        {% if products_interested %}
         <div class="table-responsive">
           <table class="table table-bordered table-striped align-middle">
-    <thead>
-      <tr>
-        <th>Created At</th>
-        <th>Production Line</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for line in production_lines %}
-      <tr>
-        <td>{{ line.visit.created_at|date:"Y-m-d H:i" }}</td>
-        <td>{{ line.get_productionline_display }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+            <thead>
+              <tr>
+                <th>Created At</th>
+                <th>Product</th>
+                <th>Order Estimate</th>
+                <th>Final Order Amount</th>
+                <th>Payment Collected</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for product in products_interested %}
+              <tr>
+                <td>{{ product.visit.created_at|date:"Y-m-d H:i" }}</td>
+                <td>{{ product.get_product_interested_display }}</td>
+                <td>{{ product.order_estimate|default:"-" }}</td>
+                <td>{{ product.final_order_amount|default:"-" }}</td>
+                <td>
+                  {% if product.payment_collected %}
+                    <span class="badge bg-success">Yes</span>
+                  {% else %}
+                    <span class="badge bg-secondary">No</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
         {% else %}
-          <p class="text-muted">No production lines added.</p>
+          <p class="text-muted">No products interested added.</p>
         {% endif %}
       </div>
 

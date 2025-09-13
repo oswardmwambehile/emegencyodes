@@ -80,7 +80,7 @@
                   </td>
                   <td>
                     <span class="badge 
-                      {% if v.tag == 'Prospector' %}bg-warning text-dark
+                      {% if v.tag == 'Prospect' %}bg-warning text-dark
                       {% elif v.tag == 'Lead' %}bg-primary
                       {% elif v.tag == 'Customer' %}bg-success
                       {% else %}bg-light text-dark{% endif %}">
@@ -95,7 +95,7 @@
     </a>
 
     <!-- Add Follow-up Button -->
-    <a href="" class="btn btn-sm btn-success mb-1">
+    <a href="{%url 'update_visit' v.id %}" class="btn btn-sm btn-success mb-1">
         <i class="fas fa-plus-circle"></i> Add Follow-up
     </a>
 </td>

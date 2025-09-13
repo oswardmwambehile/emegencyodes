@@ -141,55 +141,40 @@ def logout_user(request):
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from .forms import NewVisitForm, VisitProductionLineFormSet
-from .models import CustomerContact, NewVisit, VisitProductionLine
-
+from .forms import NewVisitForm, ProductInterestedFormSet
+from .models import CustomerContact, NewVisit, ProductInterested
 
 # -------------------------------
-# Create New Visit + Multiple Production Lines
+# Create New Visit + Multiple Products Interested
 # -------------------------------
 @login_required
 def new_visit(request):
     if request.method == "POST":
-        visit_form = NewVisitForm(request.POST)
-        formset = VisitProductionLineFormSet(request.POST, queryset=VisitProductionLine.objects.none())
+        form = NewVisitForm(request.POST)
+        formset = ProductInterestedFormSet(request.POST, queryset=ProductInterested.objects.none())
 
-        if visit_form.is_valid() and formset.is_valid():
-            visit = visit_form.save(commit=False)
+        if form.is_valid() and formset.is_valid():
+            visit = form.save(commit=False)
             visit.added_by = request.user
-
-            # Auto-fill contact info snapshot if contact_person exists
-            if visit.contact_person:
-                try:
-                    contact = CustomerContact.objects.get(id=visit.contact_person.id)
-                    visit.contact_number = contact.contact_detail
-                    visit.designation = contact.customer.designation
-                except CustomerContact.DoesNotExist:
-                    pass
-
             visit.save()
 
-            # Save each production line and assign the visit FK
-            for form in formset:
-                line = form.save(commit=False)
-                line.visit = visit
-                line.save()
+            for f in formset:
+                if f.cleaned_data and not f.cleaned_data.get("DELETE", False):
+                    product = f.save(commit=False)
+                    product.visit = visit
+                    product.save()
 
-            return redirect("all_visit_list")  # Replace with your desired success URL
+            return redirect("all_visit_list")
 
         else:
-            # Print errors for debugging
-            print("❌ Visit form errors:", visit_form.errors)
-            print("❌ Formset errors:", formset.errors)
+            print("❌ Visit form errors:", form.errors)
+            print("❌ Product formset errors:", formset.errors)
 
     else:
-        visit_form = NewVisitForm()
-        formset = VisitProductionLineFormSet(queryset=VisitProductionLine.objects.none())
+        form = NewVisitForm()
+        formset = ProductInterestedFormSet(queryset=ProductInterested.objects.none())
 
-    return render(request, "users/new_visit.html", {
-        "form": visit_form,
-        "formset": formset,
-    })
+    return render(request, "users/new_visit.html", {"form": form, "formset": formset})
 
 
 # -------------------------------
@@ -197,10 +182,13 @@ def new_visit(request):
 # -------------------------------
 @login_required
 def get_contacts(request, company_id):
-    contacts = CustomerContact.objects.filter(customer_id=company_id).order_by('contact_name')
+    contacts = CustomerContact.objects.filter(customer_id=company_id).order_by("contact_name")
     data = [
-        {"id": contact.id, "contact_name": contact.contact_name}
-        for contact in contacts
+        {
+            "id": c.id,
+            "contact_name": c.contact_name
+        }
+        for c in contacts
     ]
     return JsonResponse({"contacts": data})
 
@@ -212,11 +200,10 @@ def get_contacts(request, company_id):
 def get_contact_details(request, contact_id):
     contact = get_object_or_404(CustomerContact, id=contact_id)
     data = {
-        'contact_number': contact.contact_detail,
-        'designation': contact.customer.designation,
+        "contact_number": contact.contact_detail or "",
+        "designation": contact.customer.designation or ""
     }
     return JsonResponse(data)
-
 
 
 from django.contrib.auth.decorators import login_required
@@ -283,10 +270,13 @@ def all_visit_list(request):
 
 from django.shortcuts import render, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from .models import NewVisit, VisitProductionLine
+from .models import NewVisit
 import requests
 
 def get_location_name(lat, lon):
+    """
+    Reverse geocode latitude and longitude into human-readable location info.
+    """
     try:
         url = "https://nominatim.openstreetmap.org/reverse"
         params = {"lat": lat, "lon": lon, "format": "json", "zoom": 10, "addressdetails": 1}
@@ -305,11 +295,13 @@ def get_location_name(lat, lon):
         print(f"Reverse geocode error: {e}")
     return {"place_name": "Unknown", "region": "", "zone": "", "nation": ""}
 
+
 @login_required
 def visit_detail(request, visit_id):
+    # Get the visit object
     visit = get_object_or_404(NewVisit, id=visit_id)
     
-    # Location details
+    # Add location details
     if visit.latitude and visit.longitude:
         loc = get_location_name(visit.latitude, visit.longitude)
         visit.place_name = loc["place_name"]
@@ -322,13 +314,14 @@ def visit_detail(request, visit_id):
         visit.zone = ""
         visit.nation = ""
     
-    # Production lines
-    production_lines = visit.production_lines.all()
-    
+    # Get all related products (ProductInterested objects)
+    products_interested = visit.products.all()  # <-- use the correct related_name
+
     return render(request, "users/visit_detail.html", {
         "visit": visit,
-        "production_lines": production_lines
+        "products_interested": products_interested
     })
+
 
 from django.contrib.auth import authenticate, update_session_auth_hash
 
@@ -359,4 +352,45 @@ def change_password(request):
 def profile_view(request):
     user = request.user  # The logged-in user
     return render(request, 'users/profile.html', {'user': user})
+
+
+
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib.auth.decorators import login_required
+from .forms import UpdateVisitForm, UpdateProductInterestedFormSet
+from .models import NewVisit
+
+@login_required
+def update_visit(request, visit_id):
+    visit = get_object_or_404(NewVisit, id=visit_id)
+    stage = visit.meeting_stage
+
+    if request.method == "POST":
+        visit_form = UpdateVisitForm(request.POST, instance=visit)
+        formset = UpdateProductInterestedFormSet(
+            request.POST,
+            queryset=visit.products.all(),
+            form_kwargs={"stage": stage}
+        )
+
+        if visit_form.is_valid() and formset.is_valid():
+            visit = visit_form.save()
+            for form in formset:
+                product = form.save(commit=False)
+                product.visit = visit
+                product.save()
+            return redirect("visit_detail", visit_id=visit.id)
+
+    else:
+        visit_form = UpdateVisitForm(instance=visit)
+        formset = UpdateProductInterestedFormSet(
+            queryset=visit.products.all(),
+            form_kwargs={"stage": stage}
+        )
+
+    return render(request, "users/update_visit.html", {
+        "form": visit_form,
+        "formset": formset,
+        "visit": visit
+    })
 

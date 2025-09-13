@@ -110,81 +110,107 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         return self.first_name
     
 
-    
 from django.db import models
 from django.conf import settings
 from django.utils.timezone import localdate
-from customer.models import *
+from customer.models import Customer, CustomerContact
+
 
 class NewVisit(models.Model):
     MEETING_STAGE_CHOICES = [
         ("Prospecting", "Prospecting"),
         ("Qualifying", "Qualifying"),
         ("Proposal or Negotiation", "Proposal or Negotiation"),
-        ("Payment Followup", "Payment Followup"),
+        ("Closing", "Closing"),
     ]
 
     TAG_CHOICES = [
-        ("Prospector", "Prospector"),
+        ("Prospect", "Prospect"),
         ("Lead", "Lead"),
         ("Customer", "Customer"),
     ]
 
     STATUS_CHOICES = [
-    ("Open", "Open"),
-    ("Won", "Won"),
-    ("Closed", "Closed"),
-    ("Lost", "Lost"),
-]
+        ("Open", "Open"),
+        ("Won Paid", "Won Paid"),
+        ("Won Pending Payment", "Won Pending Payment"),
+        ("Lost", "Lost"),
+    ]
 
+    # Client Info
     company_name = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="visits", null=True, blank=True)
     contact_person = models.ForeignKey(CustomerContact, on_delete=models.CASCADE, related_name="visits", null=True, blank=True)
-
     contact_number = models.CharField(max_length=255, blank=True, null=True)
     designation = models.CharField(max_length=255, blank=True, null=True)
 
+    # Location
     latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
-    # Dropdown with default
-    meeting_stage = models.CharField(
-        max_length=50,
-        choices=MEETING_STAGE_CHOICES,
-        default="Prospecting"
-    )
+    # Stage
+    meeting_stage = models.CharField(max_length=50, choices=MEETING_STAGE_CHOICES, default="Prospecting")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Open", blank=True, null=True)
+    tag = models.CharField(max_length=20, choices=TAG_CHOICES, default="Prospect", null=True, blank=True)
 
+    # Discussion
     item_discussed = models.TextField(max_length=255)
 
-    # New fields
+    # Qualifying stage
     client_budget = models.DecimalField(max_digits=19, decimal_places=2, null=True, blank=True)
-    
-   
-    status = models.CharField(
-            max_length=20,
-            choices=STATUS_CHOICES,
-            default="Open",
-            blank=True,
-            null=True
-        )
 
+    # Proposal / Negotiation stage
+    is_order_final = models.BooleanField(null=True, blank=True)  # Yes / No
 
-    tag = models.CharField(
-        max_length=20,
-        choices=TAG_CHOICES,
-         default="Prospector",
+    # Closing stage
+    contract_outcome = models.CharField(
+        max_length=10,
+        choices=[("Won", "Won"), ("Lost", "Lost")],
         null=True,
         blank=True
     )
+    contract_amount = models.DecimalField(max_digits=19, decimal_places=2, null=True, blank=True)  # if won
+    reason_lost = models.TextField(null=True, blank=True)  # if lost
+    payment_collected = models.BooleanField(null=True, blank=True)  # yes/no overall
 
-    added_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-    )
-
+    # Relations
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def update_stage_logic(self):
+        """
+        Automatically enforces stage rules:
+        - Prospecting: Status=Open, Tag=Prospect
+        - Qualifying: Status=Open, Tag=Lead
+        - Proposal: Status=Open, Tag=Lead
+        - Closing: Depends on outcome
+        """
+        if self.meeting_stage == "Prospecting":
+            self.status = "Open"
+            self.tag = "Prospect"
+
+        elif self.meeting_stage == "Qualifying":
+            self.status = "Open"
+            self.tag = "Lead"
+
+        elif self.meeting_stage == "Proposal or Negotiation":
+            self.status = "Open"
+            self.tag = "Lead"
+
+        elif self.meeting_stage == "Closing":
+            if self.contract_outcome == "Won":
+                self.tag = "Customer"
+                if self.payment_collected:
+                    self.status = "Won Paid"
+                else:
+                    self.status = "Won Pending Payment"
+            elif self.contract_outcome == "Lost":
+                self.tag = None
+                self.status = "Lost"
+
+    def save(self, *args, **kwargs):
+        self.update_stage_logic()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         company = self.company_name.company_name if self.company_name else "No Company"
@@ -192,8 +218,8 @@ class NewVisit(models.Model):
         return f"Visit: {company} - {contact}"
 
 
-class VisitProductionLine(models.Model):
-    PRODUCTION_LINE_CHOICES = [
+class ProductInterested(models.Model):
+    PRODUCT_CHOICES = [
         ("RESIN_ROOFING_SHEETS", "RESIN ROOFING SHEETS"),
         ("ROOF_PAINT", "ROOF PAINT"),
         ("UPVC", "UPVC"),
@@ -201,13 +227,15 @@ class VisitProductionLine(models.Model):
         ("ZEBRA_TILES", "ZEBRA TILES"),
     ]
 
-    visit = models.ForeignKey(
-        NewVisit,
-        on_delete=models.CASCADE,
-        related_name="production_lines"
-    )
+    visit = models.ForeignKey(NewVisit, on_delete=models.CASCADE, related_name="products")
+    product_interested = models.CharField(max_length=30, choices=PRODUCT_CHOICES)
 
-    productionline = models.CharField(max_length=30, choices=PRODUCTION_LINE_CHOICES)
+    # Proposal stage
+    order_estimate = models.PositiveIntegerField(null=True, blank=True)
+
+    # Closing stage
+    final_order_amount = models.PositiveIntegerField(null=True, blank=True)
+    payment_collected = models.DecimalField(max_digits=19, decimal_places=2, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.visit} - {self.get_productionline_display()}"
+        return f"{self.visit} - {self.get_product_display()}"
